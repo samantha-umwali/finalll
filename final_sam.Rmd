@@ -1,0 +1,265 @@
+---
+title: "Untitled"
+author: "Umwali Samantha_101401"
+date: "2025-10-18"
+output: html_document
+---
+
+
+library(dplyr)
+library(dplyr)
+library(ggplot2)
+
+
+
+```{r}
+world<- read.csv("DataFile.csv", header=TRUE, sep=",")
+world
+```
+
+Question 2
+
+```{r}
+world$Sex <- tolower(world$Sex)
+world$Sex <- ifelse(world$Sex %in% c("m", "male"), "Male",
+                   ifelse(world$Sex %in% c("f", "female"), "Female", NA))
+world
+
+```
+
+Question 3
+
+```{r}
+world$Age <- tolower(world$Age)
+View(world)
+```
+
+
+
+```{r}
+
+# Extract values
+library(stringr)
+world$Years <- as.numeric(str_extract(world$Age, "\\d*\\.?\\d+(?=\\s*(yrs|year|yr|y))"))
+world$Months <- as.numeric(str_extract(world$Age, "\\d*\\.?\\d+(?=\\s*(months|mo|m|mths|M|ths))"))
+world$Plain <- as.numeric(str_extract(world$Age, "^\\d*\\.?\\d+$"))
+
+```
+
+```{r}
+# Use plain numbers as years if other values are missing
+world$Years <- ifelse(is.na(world$Years), world$Plain, world$Years)
+
+# Compute total months and divide by 12 to get age in years
+library(dplyr)
+world$Years[is.na(world$Years)] <- 0
+world$Months[is.na(world$Months)] <- 0
+world$Plain[is.na(world$Plain)] <- 0
+world$Age <- round((world$Years * 12 + world$Months)/12,2)
+world <- world %>% select(-Years, -Months, -Plain)
+world
+
+```
+
+```{r}
+#Grouping
+world$Age_group <- ifelse(world$Age < 5, "Less than 5 years",
+                  ifelse(world$Age < 15, "5-14 years",
+                  ifelse(world$Age < 25, "15-24 years",
+                  ifelse(world$Age < 50, "25-49 years",
+                  ifelse(world$Age >= 50, "50 years and above","Not Given")))))
+world
+```
+
+4.Produce outputs for briefing of the Minister based on his interest
+
+```{r}
+
+#Total number of cases by province
+world %>% count(Province, District) %>% arrange(desc(n))
+
+```
+
+```{r}
+
+#The most and less affected age group
+library(ggplot2)
+age_summary <- group_by(world, Age_group) %>%
+  count(Age_group, sort = TRUE)
+age_summary
+ggplot(age_summary, aes(x = Age_group, y = n)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = n), vjust = -0.5) +
+  labs(title = "Cases by Age Group",
+       x = "Age Group", y = "Number of Cases") +
+  theme_minimal()
+
+```
+
+```{r}
+
+#Gender distribution
+gender_summary <- world %>% count(Sex)
+ggplot(gender_summary, aes(x = Sex, y = n)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = n), vjust = -0.2) +
+  labs(title = "Cases by Gender",
+       x = "Gender", y = "Number of Cases") +
+  theme_minimal()
+
+```
+
+```{r}
+
+#Analysis of cases in different groups across different age groups,genders and districts
+
+chisq.test(table(world$Age_group))
+chisq.test(table(world$Sex))
+chisq.test(table(world$District))
+
+```
+
+!!!!!!!!!!!!!!!!!!!!!!!!
+
+```{r}
+
+#Epidemic curve
+# Adjust if format differs
+library(lubridate)
+world$OnsetDate <- dmy(world$`Date of onset`) 
+
+```
+
+
+```{r}
+
+# Convert all to character (in case some are numbers)
+world$`Date of onset` <- as.character(world$`Date of onset`)
+
+# Identify numeric Excel-style dates
+is_numeric_date <- grepl("^\\d+\\.?\\d*$", world$`Date of onset`)
+
+# Create a new parsed date column
+world$ParsedDate <- NA
+
+# Convert Excel numeric dates
+world$ParsedDate[is_numeric_date] <- as.Date(as.numeric(world$`Date of onset`[is_numeric_date]), origin = "1899-12-30")
+
+# Convert normal date strings using dmy()
+world$ParsedDate[!is_numeric_date] <- dmy(world$`Date of onset`[!is_numeric_date])
+ world
+
+```
+
+
+```{r}
+
+# Fix just those that failed earlier
+is_failed <- is.na(world$ParsedDate) & grepl("^\\d{1,2}/\\d{1,2}/\\d{2}$", world$`Date of onset`)
+world$ParsedDate[is_failed] <- mdy(world$`Date of onset`[is_failed])
+world
+
+```
+
+
+
+
+```{r}
+# Ensure date is in Date format
+world$ParsedDate <- as.Date(world$ParsedDate)
+# Create month and year columns
+world <- world %>%
+  mutate(Month = floor_date(ParsedDate, "month"),
+         Year = year(ParsedDate))
+monthly_cases <- world %>%
+  count(Month)
+yearly_cases <- world %>%
+  count(Year)
+
+
+monthly_cases <- monthly_cases %>%
+  mutate(Group = "Monthly")
+
+yearly_cases_line <- yearly_cases %>%
+  mutate(Month = as.Date(paste0(Year, "-01-01")),
+         Group = "Yearly")
+
+# Combine both into one dataframe
+combined <- bind_rows(monthly_cases, yearly_cases_line)
+
+# Plot both trends in one graph
+ggplot(combined, aes(x = Month, y = n, color = Group)) +
+  geom_line(size = 1.2) +
+  labs(title = "Monthly and Yearly Trends of Cholera Cases",
+       x = "Date", y = "Number of Cases", color = "Trend Level") +
+  scale_color_manual(values = c("Monthly" = "steelblue", "Yearly" = "lightgreen")) +
+  theme_minimal()
+```
+
+```{r}
+
+#Distribution by outcome and the recovery rate
+world$Outcome<-tolower(world$Outcome)
+table(world$Outcome)
+recovery_rate <- round(nrow(filter(world, world$Outcome == "discharged")) / total_cases * 100,2)
+recovery_rate
+
+```
+
+5.The necessary figures that allows visualization of the outbreak situation
+
+
+6.What are the risk factors driving the spread of the outbreak? Provide estimates and detailed output.
+
+```{r}
+
+world$`Water treatment`<- tolower(world$`Water treatment`)
+world$`Water treatment`[world$`Water treatment` %in% c("boil", "boiling")] <- "Boiling"
+
+```
+
+```{r}
+Cholera_ds$`Water source`<-tolower(Cholera_ds$`Water source`)
+
+```
+
+```{r}
+model <- glm(Outcome == "died" ~ Age + Sex  + `Water source` + `Water treatment`, data = world, family = "binomial")
+summary(model)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

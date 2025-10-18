@@ -1,0 +1,233 @@
+---
+title: "Final project"
+author: "Charlene Isimbi Kanyange"
+date: "2025-05-30"
+output: html_document
+---
+
+1. List of issues in this dataset:
+
+. Some columns contain missing values.
+. Inconsistent coding is present across records, such as variations like D&V, D;V, or D/V.
+. Different cases are sometimes assigned the same identification number.
+. Date formats vary across records.
+. The age variable includes both numbers and text, even though it should only contain numeric values.
+. In the second location, certain variables were not recorded for all cases, resulting in missing data.
+
+
+```{r}
+library(readxl)
+Cholera_ds <- read_excel("C:/Users/korte/Desktop/Chrln/Auca/R/DataFile.xls")
+str(Cholera_ds)
+summary(Cholera_ds)
+```
+
+```{r}
+
+Cholera_ds$`Case No.` <- 1:2066
+```
+
+
+2. Harmonize the variabe "Sex"
+```{r}
+Cholera_ds$Sex <- tolower(Cholera_ds$Sex)
+Cholera_ds$Sex <- ifelse(Cholera_ds$Sex %in% c("m", "male"), "Male",
+                   ifelse(Cholera_ds$Sex %in% c("f", "female"), "Female", NA))
+Cholera_ds
+```
+
+3. Grouping age
+```{r}
+Cholera_ds$Age <- tolower(Cholera_ds$Age)
+View(Cholera_ds)
+```
+
+```{r}
+# Extract values
+library(stringr)
+Cholera_ds$Years <- as.numeric(str_extract(Cholera_ds$Age, "\\d*\\.?\\d+(?=\\s*(yrs|year|yr|y))"))
+Cholera_ds$Months <- as.numeric(str_extract(Cholera_ds$Age, "\\d*\\.?\\d+(?=\\s*(months|mo|m|mths|M|ths))"))
+Cholera_ds$Plain <- as.numeric(str_extract(Cholera_ds$Age, "^\\d*\\.?\\d+$"))
+```
+
+```{r}
+# Use plain numbers as years if other values are missing
+Cholera_ds$Years <- ifelse(is.na(Cholera_ds$Years), Cholera_ds$Plain, Cholera_ds$Years)
+
+# Compute total months and divide by 12 to get age in years
+library(dplyr)
+Cholera_ds$Years[is.na(Cholera_ds$Years)] <- 0
+Cholera_ds$Months[is.na(Cholera_ds$Months)] <- 0
+Cholera_ds$Plain[is.na(Cholera_ds$Plain)] <- 0
+Cholera_ds$Age <- round((Cholera_ds$Years * 12 + Cholera_ds$Months)/12,2)
+Cholera_ds <- Cholera_ds %>% select(-Years, -Months, -Plain)
+Cholera_ds
+```
+
+```{r}
+#Grouping
+Cholera_ds$Age_group <- ifelse(Cholera_ds$Age < 5, "Less than 5 years",
+                  ifelse(Cholera_ds$Age < 15, "5-14 years",
+                  ifelse(Cholera_ds$Age < 25, "15-24 years",
+                  ifelse(Cholera_ds$Age < 50, "25-49 years",
+                  ifelse(Cholera_ds$Age >= 50, "50 years and above","Not Given")))))
+Cholera_ds
+```
+
+
+4.Produce outputs for briefing of the Minister based on his interest
+```{r}
+#Total number of cases by province
+Cholera_ds %>% count(Province, District) %>% arrange(desc(n))
+```
+
+```{r}
+#Number of death and the case fatality rate
+```
+
+```{r}
+#The most and less affected age group
+library(ggplot2)
+age_summary <- group_by(Cholera_ds, Age_group) %>%
+  count(Age_group, sort = TRUE)
+age_summary
+ggplot(age_summary, aes(x = Age_group, y = n)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = n), vjust = -0.5) +
+  labs(title = "Cases by Age Group",
+       x = "Age Group", y = "Number of Cases") +
+  theme_minimal()
+```
+
+```{r}
+#Gender distribution
+gender_summary <- Cholera_ds %>% count(Sex)
+ggplot(gender_summary, aes(x = Sex, y = n)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = n), vjust = -0.2) +
+  labs(title = "Cases by Gender",
+       x = "Gender", y = "Number of Cases") +
+  theme_minimal()
+```
+
+```{r}
+#Analysis of cases in different groups across different age groups,genders and districts
+
+chisq.test(table(Cholera_ds$Age_group))
+chisq.test(table(Cholera_ds$Sex))
+chisq.test(table(Cholera_ds$District))
+```
+
+```{r}
+#Epidemic curve
+# Adjust if format differs
+library(lubridate)
+Cholera_ds$OnsetDate <- dmy(Cholera_ds$`Date of onset`) 
+```
+
+```{r}
+# Convert all to character (in case some are numbers)
+Cholera_ds$`Date of onset` <- as.character(Cholera_ds$`Date of onset`)
+
+# Identify numeric Excel-style dates
+is_numeric_date <- grepl("^\\d+\\.?\\d*$", Cholera_ds$`Date of onset`)
+
+# Create a new parsed date column
+Cholera_ds$ParsedDate <- NA
+
+# Convert Excel numeric dates
+Cholera_ds$ParsedDate[is_numeric_date] <- as.Date(as.numeric(Cholera_ds$`Date of onset`[is_numeric_date]), origin = "1899-12-30")
+
+# Convert normal date strings using dmy()
+Cholera_ds$ParsedDate[!is_numeric_date] <- dmy(Cholera_ds$`Date of onset`[!is_numeric_date])
+ Cholera_ds
+```
+
+```{r}
+# Fix just those that failed earlier
+is_failed <- is.na(Cholera_ds$ParsedDate) & grepl("^\\d{1,2}/\\d{1,2}/\\d{2}$", Cholera_ds$`Date of onset`)
+Cholera_ds$ParsedDate[is_failed] <- mdy(Cholera_ds$`Date of onset`[is_failed])
+Cholera_ds
+```
+
+```{r}
+# Ensure date is in Date format
+Cholera_ds$ParsedDate <- as.Date(Cholera_ds$ParsedDate)
+# Create month and year columns
+Cholera_ds <- Cholera_ds %>%
+  mutate(Month = floor_date(ParsedDate, "month"),
+         Year = year(ParsedDate))
+monthly_cases <- Cholera_ds %>%
+  count(Month)
+yearly_cases <- Cholera_ds %>%
+  count(Year)
+
+
+monthly_cases <- monthly_cases %>%
+  mutate(Group = "Monthly")
+
+yearly_cases_line <- yearly_cases %>%
+  mutate(Month = as.Date(paste0(Year, "-01-01")),
+         Group = "Yearly")
+
+# Combine both into one dataframe
+combined <- bind_rows(monthly_cases, yearly_cases_line)
+
+# Plot both trends in one graph
+ggplot(combined, aes(x = Month, y = n, color = Group)) +
+  geom_line(size = 1.2) +
+  labs(title = "Monthly and Yearly Trends of Cholera Cases",
+       x = "Date", y = "Number of Cases", color = "Trend Level") +
+  scale_color_manual(values = c("Monthly" = "steelblue", "Yearly" = "lightgreen")) +
+  theme_minimal()
+```
+
+```{r}
+#Distribution by outcome and the recovery rate
+Cholera_ds$Outcome<-tolower(Cholera_ds$Outcome)
+table(Cholera_ds$Outcome)
+recovery_rate <- round(nrow(filter(Cholera_ds, Cholera_ds$Outcome == "discharged")) / total_cases * 100,2)
+recovery_rate
+```
+
+5. The necessary figures that allows visualization of the outbreak situation
+```{r}
+
+```
+
+6. Risk factors driving the spread of the outbreak?
+```{r}
+Cholera_ds$`Water treatment`<- tolower(Cholera_ds$`Water treatment`)
+Cholera_ds$`Water treatment`[Cholera_ds$`Water treatment` %in% c("boil", "boiling")] <- "Boiling"
+```
+
+```{r}
+Cholera_ds$`Water source`<-tolower(Cholera_ds$`Water source`)
+```
+
+```{r}
+model <- glm(Outcome == "died" ~ Age + Sex  + `Water source` + `Water treatment`, data = Cholera_ds, family = "binomial")
+summary(model)
+```
+Age is the only statistically significant predictor:
+
+Estimate = 0.04018 means that for every one-year increase in age, the log-odds of death from cholera increase by 0.04.
+
+This means that each additional year of age is associated with a 4.1% increase in the odds of dying from cholera.
+
+Sex, water source, and water treatment were not significant predictors in this model.
+
+The model suffers from extensive missing data, reducing power and reliability.
+
+Caution is advised in interpreting results—especially estimates with large standard errors.
+
+
+7. Recommendations:
+
+Direct hygiene promotion efforts, access to safe water, and mobile healthcare services toward individuals aged 25–49.
+
+Prioritize District 2 with initiatives such as clean water provision, sanitation improvements, hygiene awareness programs, mobile medical units, and distribution of hygiene kits.
+
+Strengthen case reporting by providing better training for data collectors to improve the effectiveness of outbreak response.
+
+Allocate resources to develop water and sanitation systems, addressing root causes and reducing the risk of future outbreaks.
