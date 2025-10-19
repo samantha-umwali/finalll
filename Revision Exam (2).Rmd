@@ -1,0 +1,395 @@
+---
+title: "Revision for the exam"
+author: "Ariane IRADUKUNDA"
+date: "2025-10-18"
+output: html_document
+---
+
+## (1) Identify and list data quality issues with this dataset
+
+```{r}
+# Loading required libraries
+library(readxl)
+library(dplyr)
+# Loading the dataset
+file_path <- "C:/Users/airadukunda/Downloads/DataFile.xls"
+df <- read_excel(file_path)
+
+# 1. Check for missing values in each column
+missing_values <- colSums(is.na(df))
+print("Missing Values per Column:")
+print(missing_values)
+
+```
+
+
+
+
+
+```{r}
+
+# 2. Unique values in 'Sex' and 'Outcome'
+unique_sex <- unique(na.omit(df$Sex))
+unique_outcome <- unique(na.omit(df$Outcome))
+cat("\nUnique values in 'Sex':\n")
+print(unique_sex)
+cat("\nUnique values in 'Outcome':\n")
+print(unique_outcome)
+
+```
+
+
+
+
+```{r}
+
+# 3. Sample of problematic Age entries
+set.seed(123)
+age_samples <- sample(na.omit(df$Age), 10)
+cat("\nSample Age entries:\n")
+print(age_samples)
+
+```
+```{r}
+
+# 4. Sample of Date of Onset entries
+date_samples <- sample(na.omit(df$`Date of onset`), 10)
+cat("\nSample Date of Onset entries:\n")
+print(date_samples)
+
+```
+```{r}
+# 5. Check for duplicate case numbers
+duplicate_cases <- sum(duplicated(df$`Case No.`))
+cat("\nNumber of duplicate case numbers:", duplicate_cases, "\n")
+```
+
+
+```{r}
+## The codes above describes the following:
+#Reads your Excel file using readxl.
+#Counts missing values for each column.
+#Lists unique values in Sex and Outcome to spot inconsistencies.
+#Shows samples of Age and Date of Onset for format issues.
+#Counts duplicate case numbers.
+```
+
+
+```{r}
+## (2) Harmonize the codification of the variable “Sex”
+
+# Inspecting unique values before cleaning
+cat("Before harmonization:\n")
+print(unique(df$Sex))
+
+# Harmonize 'Sex' variable
+df <- df %>%
+  mutate(Sex = tolower(trimws(Sex)),        # Convert to lowercase and remove spaces
+         Sex = case_when(
+           Sex %in% c("m", "male") ~ "Male",
+           Sex %in% c("f", "female") ~ "Female",
+           TRUE ~ NA_character_           # Assign NA for invalid or unknown entries
+         ))
+
+# Inspect unique values after cleaning
+cat("\nAfter harmonization:\n")
+print(unique(df$Sex))
+```
+
+
+```{r}
+## (3) Recode the variable “Age” into “AgeGroup” using the following age classes:
+# a. Less than 5 years
+# b. 5-14 years
+# c. 15-24 years
+# d. 25-49 years
+# e. 50 years and above
+
+
+# Converting Age to numeric where possible
+# Removing text like 'yrs', 'yr', 'years', and handle months
+df <- df %>%
+  mutate(Age_clean = as.numeric(gsub("[^0-9]", "", Age)))  # Extract digits only
+
+# Creating Age Group variable
+df <- df %>%
+  mutate(AgeGroup = case_when(
+    is.na(Age_clean) ~ "Unknown",
+    Age_clean < 5 ~ "Less than 5 years",
+    Age_clean >= 5 & Age_clean <= 14 ~ "5-14 years",
+    Age_clean >= 15 & Age_clean <= 24 ~ "15-24 years",
+    Age_clean >= 25 & Age_clean <= 49 ~ "25-49 years",
+    Age_clean >= 50 ~ "50 years and above"
+  ))
+
+# Checking the distribution of Age Group
+table(df$AgeGroup)
+
+## These codes helped to Clean the Age column by removing text and converting to numeric.
+## Creates a new column Age Group with the five specified categories.
+## Displays the frequency of each age group using table().
+```
+
+```{r}
+## (4) Perform the statistical analyses required and produce outputs (graphs and tables)
+
+library(ggplot2)
+
+
+#Data Cleaning
+# Harmonize Sex
+df <- df %>%
+  mutate(Sex = tolower(trimws(Sex)),
+         Sex = case_when(
+           Sex %in% c("m", "male") ~ "Male",
+           Sex %in% c("f", "female") ~ "Female",
+           TRUE ~ NA_character_
+         ))
+
+# Clean Age and create Age Group
+df <- df %>%
+  mutate(Age_clean = as.numeric(gsub("[^0-9]", "", Age)),
+         AgeGroup = case_when(
+           is.na(Age_clean) ~ "Unknown",
+           Age_clean < 5 ~ "Less than 5 years",
+           Age_clean >= 5 & Age_clean <= 14 ~ "5-14 years",
+           Age_clean >= 15 & Age_clean <= 24 ~ "15-24 years",
+           Age_clean >= 25 & Age_clean <= 49 ~ "25-49 years",
+           Age_clean >= 50 ~ "50 years and above"
+         ))
+
+# Key Indicators
+
+# Total cases
+total_cases <- nrow(df)
+
+# Geographical distribution
+geo_dist <- df %>% count(Province)
+
+# Deaths and Case Fatality Rate
+deaths <- sum(grepl("died", tolower(df$Outcome), ignore.case = TRUE), na.rm = TRUE)
+cfr <- (deaths / total_cases) * 100
+
+# Age group distribution
+age_dist <- df %>% count(AgeGroup)
+
+# Gender distribution
+gender_dist <- df %>% count(Sex)
+
+# Outcome distribution
+outcome_dist <- df %>% count(Outcome)
+
+# Recovery rate
+recovered <- sum(grepl("discharged|alive|improved", tolower(df$Outcome), ignore.case = TRUE), na.rm = TRUE)
+recovery_rate <- (recovered / total_cases) * 100
+
+
+# Visualizations
+
+# Epidemic Curve
+
+df$`Date of onset` <- as.Date(df$`Date of onset`, format = "%d/%m/%Y")
+epi_curve <- df %>%
+  filter(!is.na(`Date of onset`)) %>%
+  count(`Date of onset`)
+
+ggplot(epi_curve, aes(x = `Date of onset`, y = n)) +
+  geom_line(color = "blue") +
+  labs(title = "Epidemic Curve", x = "Date of Onset", y = "Number of Cases") +
+  theme_minimal()
+
+# Age Group Bar Chart
+
+ggplot(age_dist, aes(x = AgeGroup, y = n, fill = AgeGroup)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Cases by Age Group", x = "Age Group", y = "Number of Cases") +
+  theme_minimal()
+
+# Gender Distribution Pie Chart
+
+gender_dist$prop <- gender_dist$n / sum(gender_dist$n)
+ggplot(gender_dist, aes(x = "", y = prop, fill = Sex)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  labs(title = "Gender Distribution") +
+  theme_void()
+
+# Print Summary Tables
+
+cat("\nTotal Cases:", total_cases)
+cat("\nDeaths:", deaths)
+cat("\nCase Fatality Rate (%):", round(cfr, 2))
+cat("\nRecovery Rate (%):", round(recovery_rate, 2), "\n")
+
+print(geo_dist)
+print(age_dist)
+print(gender_dist)
+print(outcome_dist)
+
+```
+
+#### These codes Loaded and cleaned data:
+#### Harmonized Sex.
+#### Converted Age to numeric and creates AgeGroup.
+#### Calculated key indicators:Total cases, deaths, CFR, recovery rate , Distributions by province, age group, gender, and outcome.
+#### Generated visualizations:
+#### Epidemic curve (line chart).
+#### Age group distribution (bar chart).
+#### Gender distribution (pie chart).
+#### Outputs summary tables for briefing.
+
+## (5) Produce the necessary figures that allows visualization of the outbreak situation
+
+```{r}
+## 1. Epidemic Curve
+# Convert Date of onset to Date format
+df$`Date of onset` <- as.Date(df$`Date of onset`, format = "%d/%m/%Y")
+
+# Aggregate cases by date
+epi_curve <- df %>%
+  filter(!is.na(`Date of onset`)) %>%
+  group_by(`Date of onset`) %>%
+  summarise(Cases = n())
+
+# Plot epidemic curve
+ggplot(epi_curve, aes(x = `Date of onset`, y = Cases)) +
+  geom_line(color = "blue", size = 1) +
+  labs(title = "Epidemic Curve", x = "Date of Onset", y = "Number of Cases") +
+  theme_minimal()
+
+## 2. Cases by Age Group
+
+# Assuming AgeGroup was created in previous steps
+age_dist <- df %>%
+  group_by(AgeGroup) %>%
+  summarise(Cases = n())
+
+ggplot(age_dist, aes(x = AgeGroup, y = Cases, fill = AgeGroup)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Cases by Age Group", x = "Age Group", y = "Number of Cases") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+## 3. Gender Distribution (Pie Chart)
+
+gender_dist <- df %>%
+  group_by(Sex) %>%
+  summarise(Cases = n())
+
+ggplot(gender_dist, aes(x = "", y = Cases, fill = Sex)) +
+  geom_bar(stat = "identity", width = 1) +
+  coord_polar("y") +
+  labs(title = "Gender Distribution") +
+  theme_void()
+
+## 4. Geographical Distribution by Province
+
+geo_dist <- df %>%
+  group_by(Province) %>%
+  summarise(Cases = n())
+
+ggplot(geo_dist, aes(x = Province, y = Cases, fill = Province)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Cases by Province", x = "Province", y = "Number of Cases") +
+  theme_minimal()
+
+## What these plots show
+## Epidemic Curve: Trend of cases over time.
+## Age Group Bar Chart: Most and least affected age groups.
+## Gender Pie Chart: Gender distribution of cases.
+## Province Bar Chart: Geographical distribution of cases.
+
+```
+```{r}
+
+# Cleaning relevant variables
+# Harmonize water treatment and source
+df <- df %>%
+  mutate(WaterTreatment = tolower(trimws(`Water treatment`)),
+         WaterSource = tolower(trimws(`Water source`)),
+         OutcomeClean = tolower(trimws(Outcome)))
+
+# Create binary outcome for death
+df <- df %>%
+  mutate(Death = ifelse(grepl("died", OutcomeClean), 1, 0))
+
+# Summarizing risk factors
+
+# Water treatment status
+water_treatment_summary <- df %>%
+  group_by(WaterTreatment) %>%
+  summarise(Cases = n(),
+            Deaths = sum(Death),
+            CFR = round((Deaths / Cases) * 100, 2))
+
+water_source_summary <- df %>%
+  group_by(WaterSource) %>%
+  summarise(Cases = n(),
+            Deaths = sum(Death),
+            CFR = round((Deaths / Cases) * 100, 2))
+
+# Inpatient vs Outpatient
+inout_summary <- df %>%
+  group_by(`In/Outpatient`) %>%
+  summarise(Cases = n(),
+            Deaths = sum(Death),
+            CFR = round((Deaths / Cases) * 100, 2))
+
+## Print summaries
+cat("\nRisk Factor: Water Treatment\n")
+print(water_treatment_summary)
+
+cat("\nRisk Factor: Water Source\n")
+print(water_source_summary)
+
+cat("\nRisk Factor: Inpatient vs Outpatient\n")
+print(inout_summary)
+
+## this code helps Cleaning and standardizing Water treatment, Water source, and Outcome.
+## Creates a binary variable for death.
+## Calculates:Cases, Deaths, and Case Fatality Rate (CFR) for each risk factor category.
+## Performs a Chi-square test to check if water treatment is significantly associated with death.
+## Expected Insights: Lack of water treatment (e.g., “none”) likely shows higher CFR.
+## Unsafe water sources (e.g., “river”, “unprotected well”) may correlate with more cases.
+## Outpatients might have higher mortality if they did not receive timely care
+
+```
+### (7) Looking at the data you received, what recommendations would you provide to strengthen surveillance and outbreak response? Clearly and concisely discuss your thoughts.
+
+#### 1.Improve Data Quality and Standardization
+
+Standardize coding for key variables (Sex, Age, Outcome) across all reporting sites.
+Implement real time data validation during entry to reduce missing values and duplicates.
+Use digital tools (mobile apps or DHIS2 modules) for consistent reporting formats.
+
+
+#### 2.Enhance Surveillance Systems
+
+Establish rapid reporting channels from health facilities and community health workers.
+Integrate laboratory confirmation into the line list to improve case classification.
+Monitor water source and treatment data systematically to identify high-risk areas early.
+
+
+#### 3. Strengthen Outbreak Response
+
+Deploy rapid response teams to provinces with the highest case burden.
+Ensure adequate stock of ORS, IV fluids, and antibiotics in affected districts.
+Set up cholera treatment centers closer to communities to reduce deaths at home or in transit.
+
+
+#### 4. Community Engagement and Risk Communication
+
+Intensify public education campaigns on safe water practices (chlorination, boiling).
+Promote early care-seeking behavior for diarrhea and dehydration symptoms.
+Work with local leaders to address cultural barriers to timely treatment.
+
+
+#### 5. Environmental and Preventive Measures
+
+Improve access to safe water and sanitation facilities in high-risk sectors.
+Conduct regular water quality monitoring and chlorination in communal sources.
+Implement targeted hygiene interventions in schools and markets.
+
+
+ 
+
